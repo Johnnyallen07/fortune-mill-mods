@@ -4,6 +4,7 @@ using Mono.Cecil.Cil;
 const int CurrencyGainMultiplier = 5;
 const double ZenithBonusMultiplier = 10.0;
 const double UpgradeCostGrowthBase = 1.25;
+const double MaxTrialMultiplier = 10_000.0;
 
 var verifyOnly = args.Length > 0 && args[0] == "--verify-only";
 var targetArgs = verifyOnly ? args.Skip(1).ToArray() : args;
@@ -68,6 +69,7 @@ static void VerifyAssembly(string assemblyPath)
     RequireIdentityMethod(RequiredMethod(helperType, "ScaleUpgradeCost", "System.Numerics.BigInteger"));
     RequireScalePositiveDoubleHelper(RequiredMethod(helperType, "ScalePositiveDouble", "System.Double"), isZenithApplying);
     RequireDoubleConstant(RequiredMethod(helperType, "ScaleUpgradeCostGrowth", "System.Double"), UpgradeCostGrowthBase);
+    RequireDoubleConstant(RequiredMethod(helperType, "ClampTrialMultiplier", "System.Double"), MaxTrialMultiplier);
     _ = RequiredMethod(helperType, "ApplyZenithAttributes", "System.Int64", "AttributeModifier[]", "System.Double[]", "System.Double[]");
 
     RequireArgumentPatch(RequiredMethod(playerDataManager, "AddCurrency", "System.Int32", "System.Numerics.BigInteger"), "ScalePositiveBigInteger");
@@ -78,8 +80,10 @@ static void VerifyAssembly(string assemblyPath)
     RequireArgumentPatch(RequiredMethod(upgradeContainer, "GetCost", "System.Int64"), "ScaleUpgradeCostGrowth");
     RequireReturnPatch(RequiredMethod(attributeModifier, "ComputeVal", "System.Int64"), "ScalePositiveDouble");
     RequireArgumentPatch(RequiredMethod(playerDataManager, "RecalculateAttributes"), "ApplyZenithAttributes");
+    RequireReturnPatch(RequiredMethod(playerDataManager, "GetTrialMulti"), "ClampTrialMultiplier");
+    RequireArgumentPatch(RequiredMethod(playerDataManager, "MaybeUpdateTrialMulti", "System.Double"), "ClampTrialMultiplier");
 
-    Console.WriteLine($"{assemblyPath}: verified direct patch hooks currency={CurrencyGainMultiplier}x general-bonus=1x zenith-bonus={ZenithBonusMultiplier:g}x upgrade-growth={UpgradeCostGrowthBase:g}x");
+    Console.WriteLine($"{assemblyPath}: verified direct patch hooks currency={CurrencyGainMultiplier}x general-bonus=1x zenith-bonus={ZenithBonusMultiplier:g}x upgrade-growth={UpgradeCostGrowthBase:g}x trial-multi<={MaxTrialMultiplier:g}x");
 }
 
 static void PatchAssembly(string assemblyPath)
@@ -114,6 +118,8 @@ static void PatchAssembly(string assemblyPath)
     var getCost = RequiredMethod(upgradeContainer, "GetCost", "System.Int64");
     var computeVal = RequiredMethod(attributeModifier, "ComputeVal", "System.Int64");
     var recalculateAttributes = RequiredMethod(playerDataManager, "RecalculateAttributes");
+    var getTrialMulti = RequiredMethod(playerDataManager, "GetTrialMulti");
+    var maybeUpdateTrialMulti = RequiredMethod(playerDataManager, "MaybeUpdateTrialMulti", "System.Double");
     var applyAllAttributes = RequiredMethod(attributeModifier, "ApplyAllAttributes", "System.Int64", "AttributeModifier[]", "System.Double[]", "System.Double[]");
 
     var helperSetup = EnsureHelperRuntime(module, addCurrency.Parameters[1].ParameterType, applyAllAttributes);
@@ -128,6 +134,8 @@ static void PatchAssembly(string assemblyPath)
     patches += PatchUpgradeGrowth(getCost, helperMethods.ScaleUpgradeCostGrowth);
     patches += PatchReturns(computeVal, helperMethods.ScalePositiveDouble);
     patches += PatchZenithAttributeApplication(recalculateAttributes, helperMethods.ApplyZenithAttributes);
+    patches += PatchReturns(getTrialMulti, helperMethods.ClampTrialMultiplier);
+    patches += PatchArgument(maybeUpdateTrialMulti, 0, helperMethods.ClampTrialMultiplier);
 
     if (patches == 0 && helperSetup.Updates == 0)
     {
@@ -241,6 +249,15 @@ static HelperSetup EnsureHelperRuntime(ModuleDefinition module, TypeReference bi
         EmitScaleUpgradeCostGrowth,
         ref updates);
 
+    var clampTrialMultiplier = EnsureMethod(
+        helperType,
+        "ClampTrialMultiplier",
+        module.TypeSystem.Double,
+        new[] { module.TypeSystem.Double },
+        method => HasDoubleConstant(method, MaxTrialMultiplier),
+        EmitClampTrialMultiplier,
+        ref updates);
+
     var applyZenithAttributes = EnsureMethod(
         helperType,
         "ApplyZenithAttributes",
@@ -251,7 +268,7 @@ static HelperSetup EnsureHelperRuntime(ModuleDefinition module, TypeReference bi
         ref updates);
 
     return new HelperSetup(
-        new HelperMethods(scalePositiveBigInteger, scalePositiveInt64, scaleUpgradeCost, scalePositiveDouble, scaleUpgradeCostGrowth, applyZenithAttributes),
+        new HelperMethods(scalePositiveBigInteger, scalePositiveInt64, scaleUpgradeCost, scalePositiveDouble, scaleUpgradeCostGrowth, clampTrialMultiplier, applyZenithAttributes),
         updates);
 }
 
@@ -406,6 +423,24 @@ static void EmitScaleUpgradeCostGrowth(ILProcessor il)
     il.Emit(OpCodes.Ret);
     il.Append(maybeCap);
     il.Emit(OpCodes.Ldc_R8, UpgradeCostGrowthBase);
+    il.Emit(OpCodes.Bgt_S, cap);
+    il.Emit(OpCodes.Ldarg_0);
+    il.Emit(OpCodes.Ret);
+    il.Append(cap);
+    il.Emit(OpCodes.Ret);
+}
+
+static void EmitClampTrialMultiplier(ILProcessor il)
+{
+    var maybeCap = Instruction.Create(OpCodes.Ldarg_0);
+    var cap = Instruction.Create(OpCodes.Ldc_R8, MaxTrialMultiplier);
+    il.Emit(OpCodes.Ldarg_0);
+    il.Emit(OpCodes.Ldc_R8, 1.0);
+    il.Emit(OpCodes.Bge_S, maybeCap);
+    il.Emit(OpCodes.Ldc_R8, 1.0);
+    il.Emit(OpCodes.Ret);
+    il.Append(maybeCap);
+    il.Emit(OpCodes.Ldc_R8, MaxTrialMultiplier);
     il.Emit(OpCodes.Bgt_S, cap);
     il.Emit(OpCodes.Ldarg_0);
     il.Emit(OpCodes.Ret);
@@ -665,6 +700,7 @@ readonly record struct HelperMethods(
     MethodReference ScaleUpgradeCost,
     MethodReference ScalePositiveDouble,
     MethodReference ScaleUpgradeCostGrowth,
+    MethodReference ClampTrialMultiplier,
     MethodReference ApplyZenithAttributes);
 
 readonly record struct HelperSetup(HelperMethods Methods, int Updates);

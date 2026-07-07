@@ -47,6 +47,12 @@ var tests = new (string Name, Action Run)[]
     {
         AssertEqual(10.0, PowerModDefaults.ZenithBonusMultiplier);
     }),
+    ("trial mode multiplier is capped below int display overflow", () =>
+    {
+        AssertEqual(10_000.0, PowerModMath.ClampTrialMultiplier(16_834_001_183_299_768.0));
+        AssertEqual(1.0, PowerModMath.ClampTrialMultiplier(0.0));
+        AssertEqual(25.0, PowerModMath.ClampTrialMultiplier(25.0));
+    }),
     ("upgrade cost growth is capped to one point two five", () =>
     {
         AssertEqual(1.25, PowerModMath.ScaleUpgradeCostGrowth(2.0, PowerModDefaults.UpgradeCostGrowthBase));

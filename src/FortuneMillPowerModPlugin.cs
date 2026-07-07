@@ -121,3 +121,21 @@ internal static class Patch_UpgradeContainer_GetCost
         return PowerModMath.ScaleUpgradeCostGrowth(value, FortuneMillPowerModPlugin.UpgradeCostGrowthBase);
     }
 }
+
+[HarmonyPatch(typeof(PlayerDataManager), "GetTrialMulti")]
+internal static class Patch_PlayerDataManager_GetTrialMulti
+{
+    private static void Postfix(ref double __result)
+    {
+        __result = PowerModMath.ClampTrialMultiplier(__result);
+    }
+}
+
+[HarmonyPatch(typeof(PlayerDataManager), "MaybeUpdateTrialMulti")]
+internal static class Patch_PlayerDataManager_MaybeUpdateTrialMulti
+{
+    private static void Prefix(ref double realMulti)
+    {
+        realMulti = PowerModMath.ClampTrialMultiplier(realMulti);
+    }
+}

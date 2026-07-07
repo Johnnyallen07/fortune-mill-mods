@@ -55,6 +55,7 @@ AssemblyLoadContext.Default.Resolving += (context, assemblyName) =>
 var assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(assemblyPath);
 var helper = assembly.GetType("JohnnyPowerPatchRuntime", throwOnError: true)!;
 var scalePositiveDouble = helper.GetMethod("ScalePositiveDouble", BindingFlags.Public | BindingFlags.Static)!;
+var clampTrialMultiplier = helper.GetMethod("ClampTrialMultiplier", BindingFlags.Public | BindingFlags.Static)!;
 var isZenithApplying = helper.GetField("IsZenithApplying", BindingFlags.NonPublic | BindingFlags.Static)!;
 
 var general = (double)scalePositiveDouble.Invoke(null, new object[] { 2.0 })!;
@@ -68,6 +69,12 @@ var zenith = (double)scalePositiveDouble.Invoke(null, new object[] { 2.0 })!;
 if (zenith != 20.0)
 {
     throw new InvalidOperationException($"expected zenith bonus 20, got {zenith}");
+}
+
+var trial = (double)clampTrialMultiplier.Invoke(null, new object[] { 16_834_001_183_299_768.0 })!;
+if (trial != 10_000.0)
+{
+    throw new InvalidOperationException($"expected trial multiplier cap 10000, got {trial}");
 }
 
 Console.WriteLine("PASS runtime helper ScalePositiveDouble executes");

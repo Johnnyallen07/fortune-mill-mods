@@ -9,6 +9,7 @@ public static class PowerModDefaults
     public const double UpgradeCostMultiplier = 1.0;
     public const double UpgradeCostGrowthBase = 1.25;
     public const double ZenithBonusMultiplier = 10.0;
+    public const double MaxTrialMultiplier = 10_000.0;
 }
 
 public static class PowerModMath
@@ -76,6 +77,16 @@ public static class PowerModMath
         }
 
         return Math.Min(value, growthBase);
+    }
+
+    public static double ClampTrialMultiplier(double value)
+    {
+        if (double.IsNaN(value) || value < 1.0)
+        {
+            return 1.0;
+        }
+
+        return Math.Min(value, PowerModDefaults.MaxTrialMultiplier);
     }
 
     public static int KeepZenithLevel(int currentLevel)
