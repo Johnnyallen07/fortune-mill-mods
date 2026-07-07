@@ -63,11 +63,11 @@ static void VerifyAssembly(string assemblyPath)
     var upgradeContainer = RequiredType(module, "UpgradeContainer");
     var attributeModifier = RequiredType(module, "AttributeModifier");
 
+    var isZenithApplying = RequiredField(helperType, "IsZenithApplying");
     RequireIntConstant(RequiredMethod(helperType, "ScalePositiveBigInteger", "System.Numerics.BigInteger"), CurrencyGainMultiplier);
     RequireIntConstant(RequiredMethod(helperType, "ScalePositiveInt64", "System.Int64"), CurrencyGainMultiplier);
     RequireIdentityMethod(RequiredMethod(helperType, "ScaleUpgradeCost", "System.Numerics.BigInteger"));
-    RequireDoubleConstant(RequiredMethod(helperType, "ScalePositiveDouble", "System.Double"), GeneralBonusMultiplier);
-    RequireDoubleConstant(RequiredMethod(helperType, "ScalePositiveDouble", "System.Double"), ZenithBonusMultiplier);
+    RequireScalePositiveDoubleHelper(RequiredMethod(helperType, "ScalePositiveDouble", "System.Double"), isZenithApplying);
     RequireDoubleConstant(RequiredMethod(helperType, "ScaleUpgradeCostGrowth", "System.Double"), UpgradeCostGrowthBase);
     _ = RequiredMethod(helperType, "ApplyZenithAttributes", "System.Int64", "AttributeModifier[]", "System.Double[]", "System.Double[]");
 
@@ -175,6 +175,12 @@ static MethodDefinition RequiredMethod(TypeDefinition type, string name, params 
         ?? throw new InvalidOperationException($"Required method not found: {type.Name}.{name}({string.Join(", ", parameterFullNames)})");
 }
 
+static FieldDefinition RequiredField(TypeDefinition type, string name)
+{
+    return type.Fields.FirstOrDefault(f => f.Name == name)
+        ?? throw new InvalidOperationException($"Required field not found: {type.Name}.{name}");
+}
+
 static HelperSetup EnsureHelperRuntime(ModuleDefinition module, TypeReference bigIntegerType, MethodReference applyAllAttributes)
 {
     var updates = 0;
@@ -223,7 +229,7 @@ static HelperSetup EnsureHelperRuntime(ModuleDefinition module, TypeReference bi
         "ScalePositiveDouble",
         module.TypeSystem.Double,
         new[] { module.TypeSystem.Double },
-        method => HasDoubleConstant(method, GeneralBonusMultiplier) && HasDoubleConstant(method, ZenithBonusMultiplier),
+        method => IsScalePositiveDoubleHelperValid(method, isZenithApplying),
         il => EmitScalePositiveDouble(il, isZenithApplying),
         ref updates);
 
@@ -373,15 +379,14 @@ static void EmitScalePositiveInt64(ILProcessor il)
 
 static void EmitScalePositiveDouble(ILProcessor il, FieldReference isZenithApplying)
 {
-    var scale = Instruction.Create(OpCodes.Ldarg_0);
+    var positive = Instruction.Create(OpCodes.Ldsfld, isZenithApplying);
     var zenithScale = Instruction.Create(OpCodes.Ldarg_0);
     il.Emit(OpCodes.Ldarg_0);
     il.Emit(OpCodes.Ldc_R8, 0.0);
-    il.Emit(OpCodes.Bgt_S, scale);
+    il.Emit(OpCodes.Bgt_S, positive);
     il.Emit(OpCodes.Ldarg_0);
     il.Emit(OpCodes.Ret);
-    il.Append(scale);
-    il.Emit(OpCodes.Ldsfld, isZenithApplying);
+    il.Append(positive);
     il.Emit(OpCodes.Brtrue_S, zenithScale);
     il.Emit(OpCodes.Ldc_R8, GeneralBonusMultiplier);
     il.Emit(OpCodes.Ret);
@@ -551,6 +556,31 @@ static bool IsIdentityMethod(MethodDefinition method)
         && meaningful[1].OpCode == OpCodes.Ret;
 }
 
+static bool IsScalePositiveDoubleHelperValid(MethodDefinition method, FieldReference isZenithApplying)
+{
+    if (!HasDoubleConstant(method, GeneralBonusMultiplier)
+        || !HasDoubleConstant(method, ZenithBonusMultiplier)
+        || !CallsField(method, isZenithApplying))
+    {
+        return false;
+    }
+
+    var instructions = method.Body.Instructions;
+    for (var i = 0; i < instructions.Count - 1; i++)
+    {
+        if (instructions[i].OpCode == OpCodes.Ldarg_0
+            && instructions[i + 1].OpCode == OpCodes.Ldsfld
+            && instructions[i + 1].Operand is FieldReference field
+            && field.Name == isZenithApplying.Name
+            && field.DeclaringType.Name == isZenithApplying.DeclaringType.Name)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 static bool HasIntConstant(MethodDefinition method, int value)
 {
     return method.Body.Instructions.Any(i => i.OpCode == OpCodes.Ldc_I4 && i.Operand is int actual && actual == value)
@@ -584,6 +614,14 @@ static void RequireIdentityMethod(MethodDefinition method)
     if (!IsIdentityMethod(method))
     {
         throw new InvalidOperationException($"{method.DeclaringType.Name}.{method.Name} is not an identity helper");
+    }
+}
+
+static void RequireScalePositiveDoubleHelper(MethodDefinition method, FieldReference isZenithApplying)
+{
+    if (!IsScalePositiveDoubleHelperValid(method, isZenithApplying))
+    {
+        throw new InvalidOperationException($"{method.DeclaringType.Name}.{method.Name} has invalid positive-double helper IL");
     }
 }
 

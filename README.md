@@ -102,6 +102,7 @@ ZenithBonusMultiplier = 10
 ```bash
 dotnet run --project tests/FortuneMillPowerMod.Tests.csproj
 ./tests/patcher-test.sh
+./tests/patcher-runtime-test.sh
 ./tests/launch-script-test.sh
 ./tests/toggle-script-test.sh
 ```
