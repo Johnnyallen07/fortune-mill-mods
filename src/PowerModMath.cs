@@ -3,6 +3,13 @@ using System.Numerics;
 
 namespace FortuneMillPowerMod;
 
+public static class PowerModDefaults
+{
+    public const double CurrencyGainMultiplier = 2.0;
+    public const double UpgradeCostMultiplier = 0.1;
+    public const double BonusMultiplier = 100.0;
+}
+
 public static class PowerModMath
 {
     public static BigInteger ScalePositive(BigInteger value, double multiplier)
@@ -55,9 +62,9 @@ public static class PowerModMath
         return value * multiplier;
     }
 
-    public static int EnsureMinimumZenithLevel(int currentLevel, int minimumLevel)
+    public static int KeepZenithLevel(int currentLevel)
     {
-        return Math.Max(currentLevel, minimumLevel);
+        return currentLevel;
     }
 
     private static BigInteger ScaleBigInteger(BigInteger value, double multiplier)

@@ -2,7 +2,7 @@
 
 Build a BepInEx 6 CoreCLR plugin in the current `mods` directory, matching the previous Rogue Legacy 2 C# / Harmony workflow as closely as the GodotSharp .NET 8 game allows.
 
-The plugin patches Fortune Mill at runtime without modifying `FortuneMill.dll`. It scales positive currency entry points by `2x`, reduces `UpgradeContainer.GetCost()` results to `0x`, doubles positive `AttributeModifier.ComputeVal()` outputs, and makes NG+ / Zenith shop attributes apply by forcing at least NG+ 1 and Zenith level 5 when those queries run.
+The plugin patches Fortune Mill at runtime without modifying `FortuneMill.dll`. It scales positive currency entry points by `2x`, reduces `UpgradeContainer.GetCost()` results to `0.1x`, and multiplies positive `AttributeModifier.ComputeVal()` outputs by `100x`. Zenith / NG+ Shop levels are not forced upward; they still start at 0, and each earned level receives the same `100x` positive bonus scaling.
 
 The project keeps pure scaling math in `src/PowerModMath.cs` so it can be tested without loading the game. The Harmony plugin lives in `src/FortuneMillPowerModPlugin.cs`. Build output copies to `../BepInEx/plugins`. Runtime activation uses BepInEx NET.CoreCLR as a startup hook through `FortuneMill.runtimeconfig.json`.
 

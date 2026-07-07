@@ -12,7 +12,8 @@
 
 - Source stays in the current `mods` directory.
 - Build output copies to `../BepInEx/plugins`.
-- Defaults are currency `2x`, upgrade cost `0x`, bonus `2x`, all NG+ Shop bonuses enabled at level 5.
+- Defaults are currency `2x`, upgrade cost `0.1x`, and positive bonus `100x`.
+- Zenith / NG+ Shop levels are not forced upward; levels still start at 0.
 - Do not edit `FortuneMill.dll`.
 
 ---
@@ -25,9 +26,9 @@
 - Create: `tests/Program.cs`
 
 **Interfaces:**
-- Produces: `PowerModMath.ScalePositive(BigInteger,double)`, `ScalePositive(long,double)`, `ScaleCost(BigInteger,double)`, `ScaleBonus(double,double)`, `EnsureMinimumZenithLevel(int,int)`.
+- Produces: `PowerModMath.ScalePositive(BigInteger,double)`, `ScalePositive(long,double)`, `ScaleCost(BigInteger,double)`, `ScaleBonus(double,double)`, `KeepZenithLevel(int)`, and `PowerModDefaults`.
 
-- [x] Write failing tests for positive/negative gain scaling, zero-cost scaling, bonus scaling, and Zenith minimum levels.
+- [x] Write failing tests for positive/negative gain scaling, 90% cost reduction, 100x bonus scaling, defaults, and Zenith level preservation.
 - [x] Run `dotnet run --project tests/FortuneMillPowerMod.Tests.csproj` and confirm it fails before production code exists.
 - [x] Implement `PowerModMath`.
 - [x] Run the test command and confirm all checks pass.
@@ -47,7 +48,7 @@
 - [x] Patch `PlayerDataManager` currency methods.
 - [x] Patch `UpgradeContainer.GetCost`.
 - [x] Patch `AttributeModifier.ComputeVal`.
-- [x] Patch `GetNewGamePlus`, `Global_GetNewGamePlus`, and `GetZenithUpgradeLevel`.
+- [x] Leave `GetNewGamePlus`, `Global_GetNewGamePlus`, and `GetZenithUpgradeLevel` unpatched so Zenith levels remain natural.
 - [x] Run `dotnet build FortuneMillPowerMod.csproj`.
 
 ### Task 3: Runtime Installation

@@ -15,25 +15,30 @@ var tests = new (string Name, Action Run)[]
     {
         AssertEqual(20L, PowerModMath.ScalePositive(10L, 2.0));
     }),
-    ("upgrade costs can be reduced to zero", () =>
+    ("upgrade costs are reduced by ninety percent", () =>
     {
-        AssertEqual(BigInteger.Zero, PowerModMath.ScaleCost(new BigInteger(999), 0.0));
+        AssertEqual(new BigInteger(100), PowerModMath.ScaleCost(new BigInteger(1000), 0.1));
     }),
-    ("positive bonuses are scaled", () =>
+    ("positive bonuses are scaled by one hundred", () =>
     {
-        AssertEqual(3.0, PowerModMath.ScaleBonus(1.5, 2.0));
+        AssertEqual(150.0, PowerModMath.ScaleBonus(1.5, 100.0));
     }),
     ("negative bonuses are not scaled", () =>
     {
         AssertEqual(-1.5, PowerModMath.ScaleBonus(-1.5, 2.0));
     }),
-    ("zenith levels are forced to max when lower", () =>
+    ("default upgrade cost multiplier reduces costs by ninety percent", () =>
     {
-        AssertEqual(5, PowerModMath.EnsureMinimumZenithLevel(2, 5));
+        AssertEqual(0.1, PowerModDefaults.UpgradeCostMultiplier);
     }),
-    ("zenith levels above max are preserved", () =>
+    ("default bonus multiplier is one hundred", () =>
     {
-        AssertEqual(7, PowerModMath.EnsureMinimumZenithLevel(7, 5));
+        AssertEqual(100.0, PowerModDefaults.BonusMultiplier);
+    }),
+    ("zenith levels stay at their actual value", () =>
+    {
+        AssertEqual(0, PowerModMath.KeepZenithLevel(0));
+        AssertEqual(3, PowerModMath.KeepZenithLevel(3));
     }),
 };
 
