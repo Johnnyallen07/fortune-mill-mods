@@ -6,8 +6,10 @@ namespace FortuneMillPowerMod;
 public static class PowerModDefaults
 {
     public const double CurrencyGainMultiplier = 5.0;
-    public const double UpgradeCostMultiplier = 0.1;
-    public const double BonusMultiplier = 5.0;
+    public const double UpgradeCostMultiplier = 1.0;
+    public const double UpgradeCostGrowthBase = 1.25;
+    public const double BonusMultiplier = 0.0;
+    public const double ZenithBonusMultiplier = 10.0;
 }
 
 public static class PowerModMath
@@ -54,12 +56,27 @@ public static class PowerModMath
 
     public static double ScaleBonus(double value, double multiplier)
     {
-        if (value <= 0.0 || multiplier <= 1.0)
+        if (value <= 0.0)
         {
             return value;
         }
 
         return value * multiplier;
+    }
+
+    public static double ScaleZenithBonus(double value, double multiplier)
+    {
+        return ScaleBonus(value, multiplier);
+    }
+
+    public static double ScaleUpgradeCostGrowth(double value, double growthBase)
+    {
+        if (value <= 1.0 || growthBase <= 1.0)
+        {
+            return value;
+        }
+
+        return Math.Min(value, growthBase);
     }
 
     public static int KeepZenithLevel(int currentLevel)

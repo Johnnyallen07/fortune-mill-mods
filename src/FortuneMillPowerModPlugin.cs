@@ -16,22 +16,28 @@ public sealed class FortuneMillPowerModPlugin : BasePlugin
 
     private static ConfigEntry<double>? currencyGainMultiplier;
     private static ConfigEntry<double>? upgradeCostMultiplier;
+    private static ConfigEntry<double>? upgradeCostGrowthBase;
     private static ConfigEntry<double>? bonusMultiplier;
+    private static ConfigEntry<double>? zenithBonusMultiplier;
     private static Harmony? harmony;
 
     internal static ManualLogSource? Logger { get; private set; }
 
     internal static double CurrencyGainMultiplier => currencyGainMultiplier?.Value ?? PowerModDefaults.CurrencyGainMultiplier;
     internal static double UpgradeCostMultiplier => upgradeCostMultiplier?.Value ?? PowerModDefaults.UpgradeCostMultiplier;
+    internal static double UpgradeCostGrowthBase => upgradeCostGrowthBase?.Value ?? PowerModDefaults.UpgradeCostGrowthBase;
     internal static double BonusMultiplier => bonusMultiplier?.Value ?? PowerModDefaults.BonusMultiplier;
+    internal static double ZenithBonusMultiplier => zenithBonusMultiplier?.Value ?? PowerModDefaults.ZenithBonusMultiplier;
 
     public override void Load()
     {
         Logger = Log;
 
-        currencyGainMultiplier = Config.Bind("Multipliers", "CurrencyGainMultiplier", PowerModDefaults.CurrencyGainMultiplier, "Multiplier applied to positive currency gains. 2.0 means +100%.");
-        upgradeCostMultiplier = Config.Bind("Multipliers", "UpgradeCostMultiplier", PowerModDefaults.UpgradeCostMultiplier, "Multiplier applied to upgrade costs. 0.1 means -90% cost.");
-        bonusMultiplier = Config.Bind("Multipliers", "BonusMultiplier", PowerModDefaults.BonusMultiplier, "Multiplier applied to positive AttributeModifier bonuses, including Zenith Shop per-level bonuses. 100.0 means 100x.");
+        currencyGainMultiplier = Config.Bind("Multipliers", "CurrencyGainMultiplier", PowerModDefaults.CurrencyGainMultiplier, "Multiplier applied to positive currency gains. 5.0 means 5x.");
+        upgradeCostMultiplier = Config.Bind("Multipliers", "UpgradeCostMultiplier", PowerModDefaults.UpgradeCostMultiplier, "Legacy final upgrade cost multiplier. 1.0 leaves final costs unchanged.");
+        upgradeCostGrowthBase = Config.Bind("Multipliers", "UpgradeCostGrowthBase", PowerModDefaults.UpgradeCostGrowthBase, "Caps positive upgrade cost growth bases. 1.25 keeps exponential growth to about 1.25x per level.");
+        bonusMultiplier = Config.Bind("Multipliers", "BonusMultiplier", PowerModDefaults.BonusMultiplier, "Multiplier applied to positive general AttributeModifier bonuses. 0.0 disables positive general bonuses.");
+        zenithBonusMultiplier = Config.Bind("Multipliers", "ZenithBonusMultiplier", PowerModDefaults.ZenithBonusMultiplier, "Multiplier applied to positive Zenith / NG+ Shop AttributeModifier bonuses. 10.0 means 10x.");
 
         harmony = new Harmony(PluginGuid);
         harmony.PatchAll(typeof(FortuneMillPowerModPlugin).Assembly);
@@ -88,9 +94,34 @@ internal static class Patch_PlayerDataManager_AddFuel
 [HarmonyPatch(typeof(UpgradeContainer), "GetCost", typeof(long))]
 internal static class Patch_UpgradeContainer_GetCost
 {
+    private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+    {
+        var codes = instructions.ToList();
+        var scaleGrowth = AccessTools.Method(typeof(Patch_UpgradeContainer_GetCost), nameof(ScaleGrowth));
+
+        for (var i = 0; i < codes.Count - 3; i++)
+        {
+            if (codes[i].opcode == System.Reflection.Emit.OpCodes.Ldloc_3
+                && codes[i + 1].opcode == System.Reflection.Emit.OpCodes.Ldarg_1
+                && codes[i + 2].opcode == System.Reflection.Emit.OpCodes.Conv_R8
+                && codes[i + 3].Calls(AccessTools.Method(typeof(Math), nameof(Math.Pow), new[] { typeof(double), typeof(double) })))
+            {
+                codes.Insert(i + 1, new CodeInstruction(System.Reflection.Emit.OpCodes.Call, scaleGrowth));
+                break;
+            }
+        }
+
+        return codes;
+    }
+
     private static void Postfix(ref BigInteger __result)
     {
         __result = PowerModMath.ScaleCost(__result, FortuneMillPowerModPlugin.UpgradeCostMultiplier);
+    }
+
+    private static double ScaleGrowth(double value)
+    {
+        return PowerModMath.ScaleUpgradeCostGrowth(value, FortuneMillPowerModPlugin.UpgradeCostGrowthBase);
     }
 }
 
