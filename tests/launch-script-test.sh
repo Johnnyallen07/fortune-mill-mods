@@ -7,8 +7,7 @@ LAUNCHER="${MOD_DIR}/launch-fortune-mill-modded.sh"
 
 output="$("$LAUNCHER" --dry-run)"
 
-grep -F 'DOTNET_STARTUP_HOOKS=' <<<"$output" >/dev/null
-grep -F 'BepInEx.NET.CoreCLR.dll' <<<"$output" >/dev/null
-grep -F 'Fortune Mill.app/Contents/MacOS/Fortune Mill' <<<"$output" >/dev/null
+grep -F 'scripts/install-macos-direct-patch.sh' <<<"$output" >/dev/null
+grep -F 'open steam://rungameid/4731620' <<<"$output" >/dev/null
 
-echo "PASS launch script dry-run includes startup hook and app executable"
+echo "PASS launch script dry-run patches assemblies and launches through Steam"
