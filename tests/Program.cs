@@ -19,17 +19,17 @@ var tests = new (string Name, Action Run)[]
     {
         AssertEqual(new BigInteger(1000), PowerModMath.ScaleCost(new BigInteger(1000), 1.0));
     }),
-    ("positive general bonuses are zeroed", () =>
+    ("positive general bonuses are unchanged", () =>
     {
-        AssertEqual(0.0, PowerModMath.ScaleBonus(1.5, 0.0));
+        AssertEqual(1.5, PowerModMath.KeepGeneralBonus(1.5));
     }),
     ("positive zenith bonuses are scaled by ten", () =>
     {
         AssertEqual(15.0, PowerModMath.ScaleZenithBonus(1.5, 10.0));
     }),
-    ("negative bonuses are not scaled", () =>
+    ("negative bonuses are unchanged", () =>
     {
-        AssertEqual(-1.5, PowerModMath.ScaleBonus(-1.5, 2.0));
+        AssertEqual(-1.5, PowerModMath.KeepGeneralBonus(-1.5));
     }),
     ("default final upgrade cost multiplier is identity", () =>
     {
@@ -42,10 +42,6 @@ var tests = new (string Name, Action Run)[]
     ("default currency multiplier is five", () =>
     {
         AssertEqual(5.0, PowerModDefaults.CurrencyGainMultiplier);
-    }),
-    ("default general bonus multiplier is zero", () =>
-    {
-        AssertEqual(0.0, PowerModDefaults.BonusMultiplier);
     }),
     ("default zenith bonus multiplier is ten", () =>
     {

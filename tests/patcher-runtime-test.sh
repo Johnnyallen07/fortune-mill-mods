@@ -58,9 +58,9 @@ var scalePositiveDouble = helper.GetMethod("ScalePositiveDouble", BindingFlags.P
 var isZenithApplying = helper.GetField("IsZenithApplying", BindingFlags.NonPublic | BindingFlags.Static)!;
 
 var general = (double)scalePositiveDouble.Invoke(null, new object[] { 2.0 })!;
-if (general != 0.0)
+if (general != 2.0)
 {
-    throw new InvalidOperationException($"expected general bonus 0, got {general}");
+    throw new InvalidOperationException($"expected general bonus unchanged at 2, got {general}");
 }
 
 isZenithApplying.SetValue(null, true);

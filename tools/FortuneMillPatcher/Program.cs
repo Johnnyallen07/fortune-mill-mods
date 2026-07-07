@@ -2,7 +2,6 @@ using Mono.Cecil;
 using Mono.Cecil.Cil;
 
 const int CurrencyGainMultiplier = 5;
-const double GeneralBonusMultiplier = 0.0;
 const double ZenithBonusMultiplier = 10.0;
 const double UpgradeCostGrowthBase = 1.25;
 
@@ -80,7 +79,7 @@ static void VerifyAssembly(string assemblyPath)
     RequireReturnPatch(RequiredMethod(attributeModifier, "ComputeVal", "System.Int64"), "ScalePositiveDouble");
     RequireArgumentPatch(RequiredMethod(playerDataManager, "RecalculateAttributes"), "ApplyZenithAttributes");
 
-    Console.WriteLine($"{assemblyPath}: verified direct patch hooks currency={CurrencyGainMultiplier}x general-bonus={GeneralBonusMultiplier:g}x zenith-bonus={ZenithBonusMultiplier:g}x upgrade-growth={UpgradeCostGrowthBase:g}x");
+    Console.WriteLine($"{assemblyPath}: verified direct patch hooks currency={CurrencyGainMultiplier}x general-bonus=1x zenith-bonus={ZenithBonusMultiplier:g}x upgrade-growth={UpgradeCostGrowthBase:g}x");
 }
 
 static void PatchAssembly(string assemblyPath)
@@ -388,7 +387,7 @@ static void EmitScalePositiveDouble(ILProcessor il, FieldReference isZenithApply
     il.Emit(OpCodes.Ret);
     il.Append(positive);
     il.Emit(OpCodes.Brtrue_S, zenithScale);
-    il.Emit(OpCodes.Ldc_R8, GeneralBonusMultiplier);
+    il.Emit(OpCodes.Ldarg_0);
     il.Emit(OpCodes.Ret);
     il.Append(zenithScale);
     il.Emit(OpCodes.Ldc_R8, ZenithBonusMultiplier);
@@ -558,8 +557,7 @@ static bool IsIdentityMethod(MethodDefinition method)
 
 static bool IsScalePositiveDoubleHelperValid(MethodDefinition method, FieldReference isZenithApplying)
 {
-    if (!HasDoubleConstant(method, GeneralBonusMultiplier)
-        || !HasDoubleConstant(method, ZenithBonusMultiplier)
+    if (!HasDoubleConstant(method, ZenithBonusMultiplier)
         || !CallsField(method, isZenithApplying))
     {
         return false;
@@ -578,7 +576,21 @@ static bool IsScalePositiveDoubleHelperValid(MethodDefinition method, FieldRefer
         }
     }
 
-    return true;
+    for (var i = 0; i < instructions.Count - 3; i++)
+    {
+        if (instructions[i].OpCode == OpCodes.Ldsfld
+            && instructions[i].Operand is FieldReference field
+            && field.Name == isZenithApplying.Name
+            && field.DeclaringType.Name == isZenithApplying.DeclaringType.Name
+            && instructions[i + 1].OpCode == OpCodes.Brtrue_S
+            && instructions[i + 2].OpCode == OpCodes.Ldarg_0
+            && instructions[i + 3].OpCode == OpCodes.Ret)
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static bool HasIntConstant(MethodDefinition method, int value)

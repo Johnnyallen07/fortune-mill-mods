@@ -17,7 +17,6 @@ public sealed class FortuneMillPowerModPlugin : BasePlugin
     private static ConfigEntry<double>? currencyGainMultiplier;
     private static ConfigEntry<double>? upgradeCostMultiplier;
     private static ConfigEntry<double>? upgradeCostGrowthBase;
-    private static ConfigEntry<double>? bonusMultiplier;
     private static ConfigEntry<double>? zenithBonusMultiplier;
     private static Harmony? harmony;
 
@@ -26,7 +25,6 @@ public sealed class FortuneMillPowerModPlugin : BasePlugin
     internal static double CurrencyGainMultiplier => currencyGainMultiplier?.Value ?? PowerModDefaults.CurrencyGainMultiplier;
     internal static double UpgradeCostMultiplier => upgradeCostMultiplier?.Value ?? PowerModDefaults.UpgradeCostMultiplier;
     internal static double UpgradeCostGrowthBase => upgradeCostGrowthBase?.Value ?? PowerModDefaults.UpgradeCostGrowthBase;
-    internal static double BonusMultiplier => bonusMultiplier?.Value ?? PowerModDefaults.BonusMultiplier;
     internal static double ZenithBonusMultiplier => zenithBonusMultiplier?.Value ?? PowerModDefaults.ZenithBonusMultiplier;
 
     public override void Load()
@@ -36,7 +34,6 @@ public sealed class FortuneMillPowerModPlugin : BasePlugin
         currencyGainMultiplier = Config.Bind("Multipliers", "CurrencyGainMultiplier", PowerModDefaults.CurrencyGainMultiplier, "Multiplier applied to positive currency gains. 5.0 means 5x.");
         upgradeCostMultiplier = Config.Bind("Multipliers", "UpgradeCostMultiplier", PowerModDefaults.UpgradeCostMultiplier, "Legacy final upgrade cost multiplier. 1.0 leaves final costs unchanged.");
         upgradeCostGrowthBase = Config.Bind("Multipliers", "UpgradeCostGrowthBase", PowerModDefaults.UpgradeCostGrowthBase, "Caps positive upgrade cost growth bases. 1.25 keeps exponential growth to about 1.25x per level.");
-        bonusMultiplier = Config.Bind("Multipliers", "BonusMultiplier", PowerModDefaults.BonusMultiplier, "Multiplier applied to positive general AttributeModifier bonuses. 0.0 disables positive general bonuses.");
         zenithBonusMultiplier = Config.Bind("Multipliers", "ZenithBonusMultiplier", PowerModDefaults.ZenithBonusMultiplier, "Multiplier applied to positive Zenith / NG+ Shop AttributeModifier bonuses. 10.0 means 10x.");
 
         harmony = new Harmony(PluginGuid);
@@ -122,14 +119,5 @@ internal static class Patch_UpgradeContainer_GetCost
     private static double ScaleGrowth(double value)
     {
         return PowerModMath.ScaleUpgradeCostGrowth(value, FortuneMillPowerModPlugin.UpgradeCostGrowthBase);
-    }
-}
-
-[HarmonyPatch(typeof(AttributeModifier), "ComputeVal", typeof(long))]
-internal static class Patch_AttributeModifier_ComputeVal
-{
-    private static void Postfix(ref double __result)
-    {
-        __result = PowerModMath.ScaleBonus(__result, FortuneMillPowerModPlugin.BonusMultiplier);
     }
 }

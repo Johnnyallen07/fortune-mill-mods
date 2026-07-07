@@ -8,7 +8,6 @@ public static class PowerModDefaults
     public const double CurrencyGainMultiplier = 5.0;
     public const double UpgradeCostMultiplier = 1.0;
     public const double UpgradeCostGrowthBase = 1.25;
-    public const double BonusMultiplier = 0.0;
     public const double ZenithBonusMultiplier = 10.0;
 }
 
@@ -54,7 +53,12 @@ public static class PowerModMath
         return ScaleBigInteger(value, multiplier);
     }
 
-    public static double ScaleBonus(double value, double multiplier)
+    public static double KeepGeneralBonus(double value)
+    {
+        return value;
+    }
+
+    public static double ScaleZenithBonus(double value, double multiplier)
     {
         if (value <= 0.0)
         {
@@ -62,11 +66,6 @@ public static class PowerModMath
         }
 
         return value * multiplier;
-    }
-
-    public static double ScaleZenithBonus(double value, double multiplier)
-    {
-        return ScaleBonus(value, multiplier);
     }
 
     public static double ScaleUpgradeCostGrowth(double value, double growthBase)
