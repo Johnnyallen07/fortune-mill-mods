@@ -1,6 +1,10 @@
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+const int CurrencyGainMultiplier = 5;
+const int UpgradeCostDivisor = 10;
+const double BonusMultiplier = 5.0;
+
 var verifyOnly = args.Length > 0 && args[0] == "--verify-only";
 var targetArgs = verifyOnly ? args.Skip(1).ToArray() : args;
 
@@ -58,10 +62,10 @@ static void VerifyAssembly(string assemblyPath)
     var upgradeContainer = RequiredType(module, "UpgradeContainer");
     var attributeModifier = RequiredType(module, "AttributeModifier");
 
-    _ = RequiredMethod(helperType, "ScalePositiveBigInteger", "System.Numerics.BigInteger");
-    _ = RequiredMethod(helperType, "ScalePositiveInt64", "System.Int64");
-    _ = RequiredMethod(helperType, "ScaleUpgradeCost", "System.Numerics.BigInteger");
-    _ = RequiredMethod(helperType, "ScalePositiveDouble", "System.Double");
+    RequireIntConstant(RequiredMethod(helperType, "ScalePositiveBigInteger", "System.Numerics.BigInteger"), CurrencyGainMultiplier);
+    RequireIntConstant(RequiredMethod(helperType, "ScalePositiveInt64", "System.Int64"), CurrencyGainMultiplier);
+    RequireIntConstant(RequiredMethod(helperType, "ScaleUpgradeCost", "System.Numerics.BigInteger"), UpgradeCostDivisor);
+    RequireDoubleConstant(RequiredMethod(helperType, "ScalePositiveDouble", "System.Double"), BonusMultiplier);
 
     RequireArgumentPatch(RequiredMethod(playerDataManager, "AddCurrency", "System.Int32", "System.Numerics.BigInteger"), "ScalePositiveBigInteger");
     RequireArgumentPatch(RequiredMethod(playerDataManager, "AddSecretCurrency", "System.Int32", "System.Numerics.BigInteger"), "ScalePositiveBigInteger");
@@ -71,7 +75,7 @@ static void VerifyAssembly(string assemblyPath)
     RequireReturnPatch(RequiredMethod(upgradeContainer, "GetCost", "System.Int64"), "ScaleUpgradeCost");
     RequireReturnPatch(RequiredMethod(attributeModifier, "ComputeVal", "System.Int64"), "ScalePositiveDouble");
 
-    Console.WriteLine($"{assemblyPath}: verified direct patch hooks");
+    Console.WriteLine($"{assemblyPath}: verified direct patch hooks currency={CurrencyGainMultiplier}x bonus={BonusMultiplier:g}x upgrade-cost=/{UpgradeCostDivisor}");
 }
 
 static void PatchAssembly(string assemblyPath)
@@ -106,7 +110,8 @@ static void PatchAssembly(string assemblyPath)
     var getCost = RequiredMethod(upgradeContainer, "GetCost", "System.Int64");
     var computeVal = RequiredMethod(attributeModifier, "ComputeVal", "System.Int64");
 
-    var helperMethods = EnsureHelperRuntime(module, addCurrency.Parameters[1].ParameterType);
+    var helperSetup = EnsureHelperRuntime(module, addCurrency.Parameters[1].ParameterType);
+    var helperMethods = helperSetup.Methods;
     var patches = 0;
 
     patches += PatchArgument(addCurrency, 1, helperMethods.ScalePositiveBigInteger);
@@ -117,7 +122,7 @@ static void PatchAssembly(string assemblyPath)
     patches += PatchReturns(getCost, helperMethods.ScaleUpgradeCost);
     patches += PatchReturns(computeVal, helperMethods.ScalePositiveDouble);
 
-    if (patches == 0)
+    if (patches == 0 && helperSetup.Updates == 0)
     {
         Console.WriteLine($"{assemblyPath}: already patched");
         return;
@@ -143,7 +148,7 @@ static void PatchAssembly(string assemblyPath)
         }
     }
 
-    Console.WriteLine($"{assemblyPath}: patched {patches} hook(s)");
+    Console.WriteLine($"{assemblyPath}: patched {patches} hook(s), updated {helperSetup.Updates} helper(s)");
     Console.WriteLine($"{assemblyPath}: backup {backupPath}");
 }
 
@@ -162,8 +167,9 @@ static MethodDefinition RequiredMethod(TypeDefinition type, string name, params 
         ?? throw new InvalidOperationException($"Required method not found: {type.Name}.{name}({string.Join(", ", parameterFullNames)})");
 }
 
-static HelperMethods EnsureHelperRuntime(ModuleDefinition module, TypeReference bigIntegerType)
+static HelperSetup EnsureHelperRuntime(ModuleDefinition module, TypeReference bigIntegerType)
 {
+    var updates = 0;
     var helperType = module.Types.FirstOrDefault(t => t.Name == "JohnnyPowerPatchRuntime");
     if (helperType is null)
     {
@@ -180,30 +186,40 @@ static HelperMethods EnsureHelperRuntime(ModuleDefinition module, TypeReference 
         "ScalePositiveBigInteger",
         bigIntegerType,
         new[] { bigIntegerType },
-        il => EmitScalePositiveBigInteger(il, module, bigIntegerType, 2));
+        method => HasIntConstant(method, CurrencyGainMultiplier),
+        il => EmitScalePositiveBigInteger(il, module, bigIntegerType, CurrencyGainMultiplier),
+        ref updates);
 
     var scaleUpgradeCost = EnsureMethod(
         helperType,
         "ScaleUpgradeCost",
         bigIntegerType,
         new[] { bigIntegerType },
-        il => EmitScalePositiveBigInteger(il, module, bigIntegerType, 10, divide: true));
+        method => HasIntConstant(method, UpgradeCostDivisor),
+        il => EmitScalePositiveBigInteger(il, module, bigIntegerType, UpgradeCostDivisor, divide: true),
+        ref updates);
 
     var scalePositiveInt64 = EnsureMethod(
         helperType,
         "ScalePositiveInt64",
         module.TypeSystem.Int64,
         new[] { module.TypeSystem.Int64 },
-        EmitScalePositiveInt64);
+        method => HasIntConstant(method, CurrencyGainMultiplier),
+        EmitScalePositiveInt64,
+        ref updates);
 
     var scalePositiveDouble = EnsureMethod(
         helperType,
         "ScalePositiveDouble",
         module.TypeSystem.Double,
         new[] { module.TypeSystem.Double },
-        EmitScalePositiveDouble);
+        method => HasDoubleConstant(method, BonusMultiplier),
+        EmitScalePositiveDouble,
+        ref updates);
 
-    return new HelperMethods(scalePositiveBigInteger, scalePositiveInt64, scaleUpgradeCost, scalePositiveDouble);
+    return new HelperSetup(
+        new HelperMethods(scalePositiveBigInteger, scalePositiveInt64, scaleUpgradeCost, scalePositiveDouble),
+        updates);
 }
 
 static MethodDefinition EnsureMethod(
@@ -211,11 +227,19 @@ static MethodDefinition EnsureMethod(
     string name,
     TypeReference returnType,
     IReadOnlyList<TypeReference> parameterTypes,
-    Action<ILProcessor> emitBody)
+    Func<MethodDefinition, bool> hasExpectedBody,
+    Action<ILProcessor> emitBody,
+    ref int updates)
 {
     var existing = type.Methods.FirstOrDefault(m => m.Name == name);
     if (existing is not null)
     {
+        if (!hasExpectedBody(existing))
+        {
+            RewriteMethodBody(existing, emitBody);
+            updates++;
+        }
+
         return existing;
     }
 
@@ -233,7 +257,18 @@ static MethodDefinition EnsureMethod(
     method.Body.MaxStackSize = 3;
     type.Methods.Add(method);
     emitBody(method.Body.GetILProcessor());
+    updates++;
     return method;
+}
+
+static void RewriteMethodBody(MethodDefinition method, Action<ILProcessor> emitBody)
+{
+    method.Body.Variables.Clear();
+    method.Body.ExceptionHandlers.Clear();
+    method.Body.Instructions.Clear();
+    method.Body.InitLocals = false;
+    method.Body.MaxStackSize = 3;
+    emitBody(method.Body.GetILProcessor());
 }
 
 static void EmitScalePositiveBigInteger(
@@ -283,7 +318,7 @@ static void EmitScalePositiveInt64(ILProcessor il)
     il.Emit(OpCodes.Ldarg_0);
     il.Emit(OpCodes.Ret);
     il.Append(scale);
-    il.Emit(OpCodes.Ldc_I4_2);
+    il.Emit(OpCodes.Ldc_I4, CurrencyGainMultiplier);
     il.Emit(OpCodes.Conv_I8);
     il.Emit(OpCodes.Mul);
     il.Emit(OpCodes.Ret);
@@ -298,7 +333,7 @@ static void EmitScalePositiveDouble(ILProcessor il)
     il.Emit(OpCodes.Ldarg_0);
     il.Emit(OpCodes.Ret);
     il.Append(scale);
-    il.Emit(OpCodes.Ldc_R8, 100.0);
+    il.Emit(OpCodes.Ldc_R8, BonusMultiplier);
     il.Emit(OpCodes.Mul);
     il.Emit(OpCodes.Ret);
 }
@@ -346,6 +381,34 @@ static bool CallsHelper(MethodDefinition method, string helperName)
         && called.DeclaringType.Name == "JohnnyPowerPatchRuntime");
 }
 
+static bool HasIntConstant(MethodDefinition method, int value)
+{
+    return method.Body.Instructions.Any(i => i.OpCode == OpCodes.Ldc_I4 && i.Operand is int actual && actual == value)
+        || method.Body.Instructions.Any(i => i.OpCode == OpCodes.Ldc_I4_5 && value == 5)
+        || method.Body.Instructions.Any(i => i.OpCode == OpCodes.Ldc_I4_S && i.Operand is sbyte actual && actual == value);
+}
+
+static bool HasDoubleConstant(MethodDefinition method, double value)
+{
+    return method.Body.Instructions.Any(i => i.OpCode == OpCodes.Ldc_R8 && i.Operand is double actual && Math.Abs(actual - value) < 0.000001);
+}
+
+static void RequireIntConstant(MethodDefinition method, int value)
+{
+    if (!HasIntConstant(method, value))
+    {
+        throw new InvalidOperationException($"{method.DeclaringType.Name}.{method.Name} does not contain expected integer constant {value}");
+    }
+}
+
+static void RequireDoubleConstant(MethodDefinition method, double value)
+{
+    if (!HasDoubleConstant(method, value))
+    {
+        throw new InvalidOperationException($"{method.DeclaringType.Name}.{method.Name} does not contain expected double constant {value}");
+    }
+}
+
 static void RequireArgumentPatch(MethodDefinition method, string helperName)
 {
     if (!CallsHelper(method, helperName))
@@ -373,3 +436,5 @@ readonly record struct HelperMethods(
     MethodReference ScalePositiveInt64,
     MethodReference ScaleUpgradeCost,
     MethodReference ScalePositiveDouble);
+
+readonly record struct HelperSetup(HelperMethods Methods, int Updates);

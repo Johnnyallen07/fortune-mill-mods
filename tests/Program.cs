@@ -3,25 +3,25 @@ using FortuneMillPowerMod;
 
 var tests = new (string Name, Action Run)[]
 {
-    ("positive BigInteger gains are scaled", () =>
+    ("positive BigInteger gains are scaled by five", () =>
     {
-        AssertEqual(new BigInteger(200), PowerModMath.ScalePositive(new BigInteger(100), 2.0));
+        AssertEqual(new BigInteger(500), PowerModMath.ScalePositive(new BigInteger(100), 5.0));
     }),
     ("negative BigInteger changes are not scaled", () =>
     {
         AssertEqual(new BigInteger(-100), PowerModMath.ScalePositive(new BigInteger(-100), 2.0));
     }),
-    ("positive long gains are scaled", () =>
+    ("positive long gains are scaled by five", () =>
     {
-        AssertEqual(20L, PowerModMath.ScalePositive(10L, 2.0));
+        AssertEqual(50L, PowerModMath.ScalePositive(10L, 5.0));
     }),
     ("upgrade costs are reduced by ninety percent", () =>
     {
         AssertEqual(new BigInteger(100), PowerModMath.ScaleCost(new BigInteger(1000), 0.1));
     }),
-    ("positive bonuses are scaled by one hundred", () =>
+    ("positive bonuses are scaled by five", () =>
     {
-        AssertEqual(150.0, PowerModMath.ScaleBonus(1.5, 100.0));
+        AssertEqual(7.5, PowerModMath.ScaleBonus(1.5, 5.0));
     }),
     ("negative bonuses are not scaled", () =>
     {
@@ -31,9 +31,13 @@ var tests = new (string Name, Action Run)[]
     {
         AssertEqual(0.1, PowerModDefaults.UpgradeCostMultiplier);
     }),
-    ("default bonus multiplier is one hundred", () =>
+    ("default currency multiplier is five", () =>
     {
-        AssertEqual(100.0, PowerModDefaults.BonusMultiplier);
+        AssertEqual(5.0, PowerModDefaults.CurrencyGainMultiplier);
+    }),
+    ("default bonus multiplier is five", () =>
+    {
+        AssertEqual(5.0, PowerModDefaults.BonusMultiplier);
     }),
     ("zenith levels stay at their actual value", () =>
     {

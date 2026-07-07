@@ -5,9 +5,9 @@ namespace FortuneMillPowerMod;
 
 public static class PowerModDefaults
 {
-    public const double CurrencyGainMultiplier = 2.0;
+    public const double CurrencyGainMultiplier = 5.0;
     public const double UpgradeCostMultiplier = 0.1;
-    public const double BonusMultiplier = 100.0;
+    public const double BonusMultiplier = 5.0;
 }
 
 public static class PowerModMath
