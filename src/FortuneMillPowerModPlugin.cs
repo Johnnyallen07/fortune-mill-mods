@@ -139,3 +139,12 @@ internal static class Patch_PlayerDataManager_MaybeUpdateTrialMulti
         realMulti = PowerModMath.ClampTrialMultiplier(realMulti);
     }
 }
+
+[HarmonyPatch(typeof(PlayerDataManager), "GetAttribute")]
+internal static class Patch_PlayerDataManager_GetAttribute
+{
+    private static void Postfix(AttributeIndex attAttributeIndex, ref double __result)
+    {
+        __result = PowerModMath.ClampDartBoardAttribute((int)attAttributeIndex, __result);
+    }
+}

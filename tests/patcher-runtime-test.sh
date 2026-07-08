@@ -56,6 +56,7 @@ var assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(assemblyPath);
 var helper = assembly.GetType("JohnnyPowerPatchRuntime", throwOnError: true)!;
 var scalePositiveDouble = helper.GetMethod("ScalePositiveDouble", BindingFlags.Public | BindingFlags.Static)!;
 var clampTrialMultiplier = helper.GetMethod("ClampTrialMultiplier", BindingFlags.Public | BindingFlags.Static)!;
+var clampDartBoardAttribute = helper.GetMethod("ClampDartBoardAttribute", BindingFlags.Public | BindingFlags.Static)!;
 var isZenithApplying = helper.GetField("IsZenithApplying", BindingFlags.NonPublic | BindingFlags.Static)!;
 
 var general = (double)scalePositiveDouble.Invoke(null, new object[] { 2.0 })!;
@@ -75,6 +76,24 @@ var trial = (double)clampTrialMultiplier.Invoke(null, new object[] { 16_834_001_
 if (trial != 10_000.0)
 {
     throw new InvalidOperationException($"expected trial multiplier cap 10000, got {trial}");
+}
+
+var bullseyeSize = (double)clampDartBoardAttribute.Invoke(null, new object[] { 24.0, 6 })!;
+if (bullseyeSize != 1.0)
+{
+    throw new InvalidOperationException($"expected bullseye size cap 1, got {bullseyeSize}");
+}
+
+var bullseyeCount = (double)clampDartBoardAttribute.Invoke(null, new object[] { 418.0, 7 })!;
+if (bullseyeCount != 20.0)
+{
+    throw new InvalidOperationException($"expected bullseye count cap 20, got {bullseyeCount}");
+}
+
+var otherAttribute = (double)clampDartBoardAttribute.Invoke(null, new object[] { 418.0, 8 })!;
+if (otherAttribute != 418.0)
+{
+    throw new InvalidOperationException($"expected unrelated attribute unchanged, got {otherAttribute}");
 }
 
 Console.WriteLine("PASS runtime helper ScalePositiveDouble executes");

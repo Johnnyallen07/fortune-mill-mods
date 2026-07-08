@@ -5,6 +5,8 @@ const int CurrencyGainMultiplier = 5;
 const double ZenithBonusMultiplier = 10.0;
 const double UpgradeCostGrowthBase = 1.25;
 const double MaxTrialMultiplier = 10_000.0;
+const double MaxDartBullseyeSize = 1.0;
+const double MaxDartBullseyeCount = 20.0;
 
 var verifyOnly = args.Length > 0 && args[0] == "--verify-only";
 var targetArgs = verifyOnly ? args.Skip(1).ToArray() : args;
@@ -70,6 +72,7 @@ static void VerifyAssembly(string assemblyPath)
     RequireScalePositiveDoubleHelper(RequiredMethod(helperType, "ScalePositiveDouble", "System.Double"), isZenithApplying);
     RequireDoubleConstant(RequiredMethod(helperType, "ScaleUpgradeCostGrowth", "System.Double"), UpgradeCostGrowthBase);
     RequireDoubleConstant(RequiredMethod(helperType, "ClampTrialMultiplier", "System.Double"), MaxTrialMultiplier);
+    RequireDoubleConstant(RequiredMethod(helperType, "ClampDartBoardAttribute", "System.Double", "System.Int32"), MaxDartBullseyeCount);
     _ = RequiredMethod(helperType, "ApplyZenithAttributes", "System.Int64", "AttributeModifier[]", "System.Double[]", "System.Double[]");
 
     RequireArgumentPatch(RequiredMethod(playerDataManager, "AddCurrency", "System.Int32", "System.Numerics.BigInteger"), "ScalePositiveBigInteger");
@@ -82,8 +85,9 @@ static void VerifyAssembly(string assemblyPath)
     RequireArgumentPatch(RequiredMethod(playerDataManager, "RecalculateAttributes"), "ApplyZenithAttributes");
     RequireReturnPatch(RequiredMethod(playerDataManager, "GetTrialMulti"), "ClampTrialMultiplier");
     RequireArgumentPatch(RequiredMethod(playerDataManager, "MaybeUpdateTrialMulti", "System.Double"), "ClampTrialMultiplier");
+    RequireReturnPatch(RequiredMethod(playerDataManager, "GetAttribute", "AttributeIndex"), "ClampDartBoardAttribute");
 
-    Console.WriteLine($"{assemblyPath}: verified direct patch hooks currency={CurrencyGainMultiplier}x general-bonus=1x zenith-bonus={ZenithBonusMultiplier:g}x upgrade-growth={UpgradeCostGrowthBase:g}x trial-multi<={MaxTrialMultiplier:g}x");
+    Console.WriteLine($"{assemblyPath}: verified direct patch hooks currency={CurrencyGainMultiplier}x general-bonus=1x zenith-bonus={ZenithBonusMultiplier:g}x upgrade-growth={UpgradeCostGrowthBase:g}x trial-multi<={MaxTrialMultiplier:g}x dart-bullseye-size<={MaxDartBullseyeSize:g}x dart-bullseye-count<={MaxDartBullseyeCount:g}");
 }
 
 static void PatchAssembly(string assemblyPath)
@@ -120,6 +124,7 @@ static void PatchAssembly(string assemblyPath)
     var recalculateAttributes = RequiredMethod(playerDataManager, "RecalculateAttributes");
     var getTrialMulti = RequiredMethod(playerDataManager, "GetTrialMulti");
     var maybeUpdateTrialMulti = RequiredMethod(playerDataManager, "MaybeUpdateTrialMulti", "System.Double");
+    var getAttribute = RequiredMethod(playerDataManager, "GetAttribute", "AttributeIndex");
     var applyAllAttributes = RequiredMethod(attributeModifier, "ApplyAllAttributes", "System.Int64", "AttributeModifier[]", "System.Double[]", "System.Double[]");
 
     var helperSetup = EnsureHelperRuntime(module, addCurrency.Parameters[1].ParameterType, applyAllAttributes);
@@ -136,6 +141,7 @@ static void PatchAssembly(string assemblyPath)
     patches += PatchZenithAttributeApplication(recalculateAttributes, helperMethods.ApplyZenithAttributes);
     patches += PatchReturns(getTrialMulti, helperMethods.ClampTrialMultiplier);
     patches += PatchArgument(maybeUpdateTrialMulti, 0, helperMethods.ClampTrialMultiplier);
+    patches += PatchReturnsWithArgument(getAttribute, helperMethods.ClampDartBoardAttribute, 0);
 
     if (patches == 0 && helperSetup.Updates == 0)
     {
@@ -258,6 +264,15 @@ static HelperSetup EnsureHelperRuntime(ModuleDefinition module, TypeReference bi
         EmitClampTrialMultiplier,
         ref updates);
 
+    var clampDartBoardAttribute = EnsureMethod(
+        helperType,
+        "ClampDartBoardAttribute",
+        module.TypeSystem.Double,
+        new[] { module.TypeSystem.Double, module.TypeSystem.Int32 },
+        method => HasDoubleConstant(method, MaxDartBullseyeCount),
+        EmitClampDartBoardAttribute,
+        ref updates);
+
     var applyZenithAttributes = EnsureMethod(
         helperType,
         "ApplyZenithAttributes",
@@ -268,7 +283,7 @@ static HelperSetup EnsureHelperRuntime(ModuleDefinition module, TypeReference bi
         ref updates);
 
     return new HelperSetup(
-        new HelperMethods(scalePositiveBigInteger, scalePositiveInt64, scaleUpgradeCost, scalePositiveDouble, scaleUpgradeCostGrowth, clampTrialMultiplier, applyZenithAttributes),
+        new HelperMethods(scalePositiveBigInteger, scalePositiveInt64, scaleUpgradeCost, scalePositiveDouble, scaleUpgradeCostGrowth, clampTrialMultiplier, clampDartBoardAttribute, applyZenithAttributes),
         updates);
 }
 
@@ -448,6 +463,51 @@ static void EmitClampTrialMultiplier(ILProcessor il)
     il.Emit(OpCodes.Ret);
 }
 
+static void EmitClampDartBoardAttribute(ILProcessor il)
+{
+    var checkCount = Instruction.Create(OpCodes.Ldarg_1);
+    var sizeMaybeMax = Instruction.Create(OpCodes.Ldarg_0);
+    var sizeCap = Instruction.Create(OpCodes.Ldc_R8, MaxDartBullseyeSize);
+    var unchanged = Instruction.Create(OpCodes.Ldarg_0);
+    var countMaybeMax = Instruction.Create(OpCodes.Ldarg_0);
+    var countCap = Instruction.Create(OpCodes.Ldc_R8, MaxDartBullseyeCount);
+
+    il.Emit(OpCodes.Ldarg_1);
+    il.Emit(OpCodes.Ldc_I4_6);
+    il.Emit(OpCodes.Bne_Un_S, checkCount);
+    il.Emit(OpCodes.Ldarg_0);
+    il.Emit(OpCodes.Ldc_R8, 0.0);
+    il.Emit(OpCodes.Bge_S, sizeMaybeMax);
+    il.Emit(OpCodes.Ldc_R8, 0.0);
+    il.Emit(OpCodes.Ret);
+    il.Append(sizeMaybeMax);
+    il.Emit(OpCodes.Ldc_R8, MaxDartBullseyeSize);
+    il.Emit(OpCodes.Bgt_S, sizeCap);
+    il.Emit(OpCodes.Ldarg_0);
+    il.Emit(OpCodes.Ret);
+    il.Append(sizeCap);
+    il.Emit(OpCodes.Ret);
+
+    il.Append(checkCount);
+    il.Emit(OpCodes.Ldc_I4_7);
+    il.Emit(OpCodes.Bne_Un_S, unchanged);
+    il.Emit(OpCodes.Ldarg_0);
+    il.Emit(OpCodes.Ldc_R8, 1.0);
+    il.Emit(OpCodes.Bge_S, countMaybeMax);
+    il.Emit(OpCodes.Ldc_R8, 1.0);
+    il.Emit(OpCodes.Ret);
+    il.Append(countMaybeMax);
+    il.Emit(OpCodes.Ldc_R8, MaxDartBullseyeCount);
+    il.Emit(OpCodes.Bgt_S, countCap);
+    il.Emit(OpCodes.Ldarg_0);
+    il.Emit(OpCodes.Ret);
+    il.Append(countCap);
+    il.Emit(OpCodes.Ret);
+
+    il.Append(unchanged);
+    il.Emit(OpCodes.Ret);
+}
+
 static void EmitApplyZenithAttributes(ILProcessor il, FieldReference isZenithApplying, MethodReference applyAllAttributes)
 {
     il.Emit(OpCodes.Ldc_I4_1);
@@ -490,6 +550,26 @@ static int PatchReturns(MethodDefinition method, MethodReference helper)
     var il = method.Body.GetILProcessor();
     foreach (var ret in method.Body.Instructions.Where(i => i.OpCode == OpCodes.Ret).ToArray())
     {
+        il.InsertBefore(ret, Instruction.Create(OpCodes.Call, helper));
+        patched++;
+    }
+
+    return patched;
+}
+
+static int PatchReturnsWithArgument(MethodDefinition method, MethodReference helper, int argumentIndex)
+{
+    if (CallsHelper(method, helper.Name))
+    {
+        return 0;
+    }
+
+    var patched = 0;
+    var il = method.Body.GetILProcessor();
+    var parameter = method.Parameters[argumentIndex];
+    foreach (var ret in method.Body.Instructions.Where(i => i.OpCode == OpCodes.Ret).ToArray())
+    {
+        il.InsertBefore(ret, Instruction.Create(OpCodes.Ldarg_S, parameter));
         il.InsertBefore(ret, Instruction.Create(OpCodes.Call, helper));
         patched++;
     }
@@ -701,6 +781,7 @@ readonly record struct HelperMethods(
     MethodReference ScalePositiveDouble,
     MethodReference ScaleUpgradeCostGrowth,
     MethodReference ClampTrialMultiplier,
+    MethodReference ClampDartBoardAttribute,
     MethodReference ApplyZenithAttributes);
 
 readonly record struct HelperSetup(HelperMethods Methods, int Updates);

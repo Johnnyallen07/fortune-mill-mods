@@ -10,6 +10,8 @@ public static class PowerModDefaults
     public const double UpgradeCostGrowthBase = 1.25;
     public const double ZenithBonusMultiplier = 10.0;
     public const double MaxTrialMultiplier = 10_000.0;
+    public const double MaxDartBullseyeSize = 1.0;
+    public const double MaxDartBullseyeCount = 20.0;
 }
 
 public static class PowerModMath
@@ -87,6 +89,21 @@ public static class PowerModMath
         }
 
         return Math.Min(value, PowerModDefaults.MaxTrialMultiplier);
+    }
+
+    public static double ClampDartBoardAttribute(int attributeIndex, double value)
+    {
+        if (double.IsNaN(value))
+        {
+            return 0.0;
+        }
+
+        return attributeIndex switch
+        {
+            6 => Math.Min(Math.Max(value, 0.0), PowerModDefaults.MaxDartBullseyeSize),
+            7 => Math.Min(Math.Max(value, 1.0), PowerModDefaults.MaxDartBullseyeCount),
+            _ => value,
+        };
     }
 
     public static int KeepZenithLevel(int currentLevel)

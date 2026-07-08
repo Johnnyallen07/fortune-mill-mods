@@ -53,6 +53,12 @@ var tests = new (string Name, Action Run)[]
         AssertEqual(1.0, PowerModMath.ClampTrialMultiplier(0.0));
         AssertEqual(25.0, PowerModMath.ClampTrialMultiplier(25.0));
     }),
+    ("dart bullseye board attributes are capped to safe values", () =>
+    {
+        AssertEqual(1.0, PowerModMath.ClampDartBoardAttribute(6, 24.0));
+        AssertEqual(20.0, PowerModMath.ClampDartBoardAttribute(7, 418.0));
+        AssertEqual(3.0, PowerModMath.ClampDartBoardAttribute(8, 3.0));
+    }),
     ("upgrade cost growth is capped to one point two five", () =>
     {
         AssertEqual(1.25, PowerModMath.ScaleUpgradeCostGrowth(2.0, PowerModDefaults.UpgradeCostGrowthBase));
