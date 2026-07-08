@@ -23,7 +23,7 @@ dotnet run --project "${MOD_DIR}/tools/FortuneMillPatcher/FortuneMillPatcher.csp
 
 dotnet run --project "${MOD_DIR}/tools/FortuneMillPatcher/FortuneMillPatcher.csproj" -- --verify-only "${TMP_DIR}/FortuneMill.dll" >/tmp/fortune-mill-patcher-verify.log
 grep -F "verified direct patch hooks" /tmp/fortune-mill-patcher-verify.log >/dev/null
-grep -F "currency=5x general-bonus=1x zenith-bonus=10x upgrade-growth=1.25x trial-multi<=10000x dart-bullseye-size<=1x dart-bullseye-count<=20" /tmp/fortune-mill-patcher-verify.log >/dev/null
+grep -F "currency=5x general-bonus=1x zenith-bonus=10x secret-shop-bonus=5x upgrade-growth=1.25x trial-multi<=10000x dart-bullseye-size<=165.39594025728948x dart-bullseye-count<=20" /tmp/fortune-mill-patcher-verify.log >/dev/null
 
 dotnet run --project "${MOD_DIR}/tools/FortuneMillPatcher/FortuneMillPatcher.csproj" -- "${TMP_DIR}/FortuneMill.dll" >/tmp/fortune-mill-patcher-idempotent.log
 grep -F "already patched" /tmp/fortune-mill-patcher-idempotent.log >/dev/null

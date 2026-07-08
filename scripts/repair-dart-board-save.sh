@@ -60,18 +60,20 @@ skipBigIntegerArray(6);
 const upgradeOffset = offset;
 const sizeIndex = 14;
 const countIndex = 15;
+const safeSizeLevel = 20n;
+const safeCountLevel = 20n;
 const sizeOffset = upgradeOffset + sizeIndex * 8;
 const countOffset = upgradeOffset + countIndex * 8;
 const oldSize = data.readBigUInt64LE(sizeOffset) - 65536n;
 const oldCount = data.readBigUInt64LE(countOffset) - 65536n;
 
-data.writeBigUInt64LE(storedLong(0), sizeOffset);
-data.writeBigUInt64LE(storedLong(20), countOffset);
+data.writeBigUInt64LE(storedLong(safeSizeLevel), sizeOffset);
+data.writeBigUInt64LE(storedLong(safeCountLevel), countOffset);
 
 fs.writeFileSync(savePath, data);
 
-console.log(`DARTS_BULLSEYE_SIZE upgrade ${oldSize} -> 0`);
-console.log(`DARTS_BULLSEYE_COUNT upgrade ${oldCount} -> 20`);
+console.log(`DARTS_BULLSEYE_SIZE upgrade ${oldSize} -> ${safeSizeLevel}`);
+console.log(`DARTS_BULLSEYE_COUNT upgrade ${oldCount} -> ${safeCountLevel}`);
 NODE
 
 echo "Backup: $backup"

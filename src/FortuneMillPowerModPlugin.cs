@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Reflection.Emit;
 using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
@@ -18,7 +19,10 @@ public sealed class FortuneMillPowerModPlugin : BasePlugin
     private static ConfigEntry<double>? upgradeCostMultiplier;
     private static ConfigEntry<double>? upgradeCostGrowthBase;
     private static ConfigEntry<double>? zenithBonusMultiplier;
+    private static ConfigEntry<double>? secretShopBonusMultiplier;
     private static Harmony? harmony;
+    private static bool isZenithApplying;
+    private static bool isSecretShopApplying;
 
     internal static ManualLogSource? Logger { get; private set; }
 
@@ -26,6 +30,9 @@ public sealed class FortuneMillPowerModPlugin : BasePlugin
     internal static double UpgradeCostMultiplier => upgradeCostMultiplier?.Value ?? PowerModDefaults.UpgradeCostMultiplier;
     internal static double UpgradeCostGrowthBase => upgradeCostGrowthBase?.Value ?? PowerModDefaults.UpgradeCostGrowthBase;
     internal static double ZenithBonusMultiplier => zenithBonusMultiplier?.Value ?? PowerModDefaults.ZenithBonusMultiplier;
+    internal static double SecretShopBonusMultiplier => secretShopBonusMultiplier?.Value ?? PowerModDefaults.SecretShopBonusMultiplier;
+    internal static bool IsZenithApplying => isZenithApplying;
+    internal static bool IsSecretShopApplying => isSecretShopApplying;
 
     public override void Load()
     {
@@ -35,11 +42,88 @@ public sealed class FortuneMillPowerModPlugin : BasePlugin
         upgradeCostMultiplier = Config.Bind("Multipliers", "UpgradeCostMultiplier", PowerModDefaults.UpgradeCostMultiplier, "Legacy final upgrade cost multiplier. 1.0 leaves final costs unchanged.");
         upgradeCostGrowthBase = Config.Bind("Multipliers", "UpgradeCostGrowthBase", PowerModDefaults.UpgradeCostGrowthBase, "Caps positive upgrade cost growth bases. 1.25 keeps exponential growth to about 1.25x per level.");
         zenithBonusMultiplier = Config.Bind("Multipliers", "ZenithBonusMultiplier", PowerModDefaults.ZenithBonusMultiplier, "Multiplier applied to positive Zenith / NG+ Shop AttributeModifier bonuses. 10.0 means 10x.");
+        secretShopBonusMultiplier = Config.Bind("Multipliers", "SecretShopBonusMultiplier", PowerModDefaults.SecretShopBonusMultiplier, "Multiplier applied to positive Secret / Gem Shop AttributeModifier bonuses. 5.0 means 5x.");
 
         harmony = new Harmony(PluginGuid);
         harmony.PatchAll(typeof(FortuneMillPowerModPlugin).Assembly);
 
         Logger.LogInfo($"{PluginName} {PluginVersion} loaded.");
+    }
+
+    internal static void ApplyZenithAttributes(long currentLevel, AttributeModifier[] maybeAttributes, double[] attributeVals, double[] attributeMuls)
+    {
+        try
+        {
+            isZenithApplying = true;
+            AccessTools.Method(typeof(AttributeModifier), "ApplyAllAttributes", new[] { typeof(long), typeof(AttributeModifier[]), typeof(double[]), typeof(double[]) })
+                .Invoke(null, new object[] { currentLevel, maybeAttributes, attributeVals, attributeMuls });
+        }
+        finally
+        {
+            isZenithApplying = false;
+        }
+    }
+
+    internal static void ApplySecretShopAttributes(UpgradeContainer container, long currentLevel, double[] attributeVals, double[] attributeMuls)
+    {
+        try
+        {
+            isSecretShopApplying = true;
+            container.applyAttributes(currentLevel, attributeVals, attributeMuls);
+        }
+        finally
+        {
+            isSecretShopApplying = false;
+        }
+    }
+}
+
+[HarmonyPatch(typeof(PlayerDataManager), "RecalculateAttributes")]
+internal static class Patch_PlayerDataManager_RecalculateAttributes
+{
+    private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+    {
+        var codes = instructions.ToList();
+        var applyContainer = AccessTools.Method(typeof(UpgradeContainer), "applyAttributes", new[] { typeof(long), typeof(double[]), typeof(double[]) });
+        var applyAll = AccessTools.Method(typeof(AttributeModifier), "ApplyAllAttributes", new[] { typeof(long), typeof(AttributeModifier[]), typeof(double[]), typeof(double[]) });
+        var applySecret = AccessTools.Method(typeof(FortuneMillPowerModPlugin), nameof(FortuneMillPowerModPlugin.ApplySecretShopAttributes));
+        var applyZenith = AccessTools.Method(typeof(FortuneMillPowerModPlugin), nameof(FortuneMillPowerModPlugin.ApplyZenithAttributes));
+
+        var containerApplyCount = 0;
+        foreach (var code in codes)
+        {
+            if (code.Calls(applyContainer))
+            {
+                containerApplyCount++;
+                if (containerApplyCount == 3)
+                {
+                    code.opcode = OpCodes.Call;
+                    code.operand = applySecret;
+                }
+            }
+            else if (code.Calls(applyAll))
+            {
+                code.operand = applyZenith;
+            }
+        }
+
+        return codes;
+    }
+}
+
+[HarmonyPatch(typeof(AttributeModifier), "ComputeVal")]
+internal static class Patch_AttributeModifier_ComputeVal
+{
+    private static void Postfix(ref double __result)
+    {
+        if (FortuneMillPowerModPlugin.IsZenithApplying)
+        {
+            __result = PowerModMath.ScaleZenithBonus(__result, FortuneMillPowerModPlugin.ZenithBonusMultiplier);
+        }
+        else if (FortuneMillPowerModPlugin.IsSecretShopApplying)
+        {
+            __result = PowerModMath.ScaleSecretShopBonus(__result, FortuneMillPowerModPlugin.SecretShopBonusMultiplier);
+        }
     }
 }
 

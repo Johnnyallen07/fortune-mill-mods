@@ -27,6 +27,10 @@ var tests = new (string Name, Action Run)[]
     {
         AssertEqual(15.0, PowerModMath.ScaleZenithBonus(1.5, 10.0));
     }),
+    ("positive secret shop bonuses are scaled by five", () =>
+    {
+        AssertEqual(7.5, PowerModMath.ScaleSecretShopBonus(1.5, 5.0));
+    }),
     ("negative bonuses are unchanged", () =>
     {
         AssertEqual(-1.5, PowerModMath.KeepGeneralBonus(-1.5));
@@ -47,6 +51,10 @@ var tests = new (string Name, Action Run)[]
     {
         AssertEqual(10.0, PowerModDefaults.ZenithBonusMultiplier);
     }),
+    ("default secret shop bonus multiplier is five", () =>
+    {
+        AssertEqual(5.0, PowerModDefaults.SecretShopBonusMultiplier);
+    }),
     ("trial mode multiplier is capped below int display overflow", () =>
     {
         AssertEqual(10_000.0, PowerModMath.ClampTrialMultiplier(16_834_001_183_299_768.0));
@@ -55,7 +63,7 @@ var tests = new (string Name, Action Run)[]
     }),
     ("dart bullseye board attributes are capped to safe values", () =>
     {
-        AssertEqual(1.0, PowerModMath.ClampDartBoardAttribute(6, 24.0));
+        AssertNearlyEqual(165.39594025728948, PowerModMath.ClampDartBoardAttribute(6, 418.0));
         AssertEqual(20.0, PowerModMath.ClampDartBoardAttribute(7, 418.0));
         AssertEqual(3.0, PowerModMath.ClampDartBoardAttribute(8, 3.0));
     }),
@@ -95,6 +103,14 @@ if (failures > 0)
 static void AssertEqual<T>(T expected, T actual)
 {
     if (!EqualityComparer<T>.Default.Equals(expected, actual))
+    {
+        throw new InvalidOperationException($"expected {expected}, got {actual}");
+    }
+}
+
+static void AssertNearlyEqual(double expected, double actual, double tolerance = 0.0000001)
+{
+    if (Math.Abs(expected - actual) > tolerance)
     {
         throw new InvalidOperationException($"expected {expected}, got {actual}");
     }

@@ -3,9 +3,10 @@ using Mono.Cecil.Cil;
 
 const int CurrencyGainMultiplier = 5;
 const double ZenithBonusMultiplier = 10.0;
+const double SecretShopBonusMultiplier = 5.0;
 const double UpgradeCostGrowthBase = 1.25;
 const double MaxTrialMultiplier = 10_000.0;
-const double MaxDartBullseyeSize = 1.0;
+const double MaxDartBullseyeSize = 165.39594025728948;
 const double MaxDartBullseyeCount = 20.0;
 
 var verifyOnly = args.Length > 0 && args[0] == "--verify-only";
@@ -66,14 +67,16 @@ static void VerifyAssembly(string assemblyPath)
     var attributeModifier = RequiredType(module, "AttributeModifier");
 
     var isZenithApplying = RequiredField(helperType, "IsZenithApplying");
+    var isSecretShopApplying = RequiredField(helperType, "IsSecretShopApplying");
     RequireIntConstant(RequiredMethod(helperType, "ScalePositiveBigInteger", "System.Numerics.BigInteger"), CurrencyGainMultiplier);
     RequireIntConstant(RequiredMethod(helperType, "ScalePositiveInt64", "System.Int64"), CurrencyGainMultiplier);
     RequireIdentityMethod(RequiredMethod(helperType, "ScaleUpgradeCost", "System.Numerics.BigInteger"));
-    RequireScalePositiveDoubleHelper(RequiredMethod(helperType, "ScalePositiveDouble", "System.Double"), isZenithApplying);
+    RequireScalePositiveDoubleHelper(RequiredMethod(helperType, "ScalePositiveDouble", "System.Double"), isZenithApplying, isSecretShopApplying);
     RequireDoubleConstant(RequiredMethod(helperType, "ScaleUpgradeCostGrowth", "System.Double"), UpgradeCostGrowthBase);
     RequireDoubleConstant(RequiredMethod(helperType, "ClampTrialMultiplier", "System.Double"), MaxTrialMultiplier);
-    RequireDoubleConstant(RequiredMethod(helperType, "ClampDartBoardAttribute", "System.Double", "System.Int32"), MaxDartBullseyeCount);
+    RequireDoubleConstant(RequiredMethod(helperType, "ClampDartBoardAttribute", "System.Double", "System.Int32"), MaxDartBullseyeSize);
     _ = RequiredMethod(helperType, "ApplyZenithAttributes", "System.Int64", "AttributeModifier[]", "System.Double[]", "System.Double[]");
+    _ = RequiredMethod(helperType, "ApplySecretShopAttributes", "UpgradeContainer", "System.Int64", "System.Double[]", "System.Double[]");
 
     RequireArgumentPatch(RequiredMethod(playerDataManager, "AddCurrency", "System.Int32", "System.Numerics.BigInteger"), "ScalePositiveBigInteger");
     RequireArgumentPatch(RequiredMethod(playerDataManager, "AddSecretCurrency", "System.Int32", "System.Numerics.BigInteger"), "ScalePositiveBigInteger");
@@ -82,12 +85,13 @@ static void VerifyAssembly(string assemblyPath)
     RequireArgumentPatch(RequiredMethod(playerDataManager, "AddFuel", "System.Int64", "System.Int64"), "ScalePositiveInt64");
     RequireArgumentPatch(RequiredMethod(upgradeContainer, "GetCost", "System.Int64"), "ScaleUpgradeCostGrowth");
     RequireReturnPatch(RequiredMethod(attributeModifier, "ComputeVal", "System.Int64"), "ScalePositiveDouble");
-    RequireArgumentPatch(RequiredMethod(playerDataManager, "RecalculateAttributes"), "ApplyZenithAttributes");
+    RequireCallPatch(RequiredMethod(playerDataManager, "RecalculateAttributes"), "ApplyZenithAttributes");
+    RequireCallPatch(RequiredMethod(playerDataManager, "RecalculateAttributes"), "ApplySecretShopAttributes");
     RequireReturnPatch(RequiredMethod(playerDataManager, "GetTrialMulti"), "ClampTrialMultiplier");
     RequireArgumentPatch(RequiredMethod(playerDataManager, "MaybeUpdateTrialMulti", "System.Double"), "ClampTrialMultiplier");
     RequireReturnPatch(RequiredMethod(playerDataManager, "GetAttribute", "AttributeIndex"), "ClampDartBoardAttribute");
 
-    Console.WriteLine($"{assemblyPath}: verified direct patch hooks currency={CurrencyGainMultiplier}x general-bonus=1x zenith-bonus={ZenithBonusMultiplier:g}x upgrade-growth={UpgradeCostGrowthBase:g}x trial-multi<={MaxTrialMultiplier:g}x dart-bullseye-size<={MaxDartBullseyeSize:g}x dart-bullseye-count<={MaxDartBullseyeCount:g}");
+    Console.WriteLine($"{assemblyPath}: verified direct patch hooks currency={CurrencyGainMultiplier}x general-bonus=1x zenith-bonus={ZenithBonusMultiplier:g}x secret-shop-bonus={SecretShopBonusMultiplier:g}x upgrade-growth={UpgradeCostGrowthBase:g}x trial-multi<={MaxTrialMultiplier:g}x dart-bullseye-size<={MaxDartBullseyeSize:g}x dart-bullseye-count<={MaxDartBullseyeCount:g}");
 }
 
 static void PatchAssembly(string assemblyPath)
@@ -125,9 +129,10 @@ static void PatchAssembly(string assemblyPath)
     var getTrialMulti = RequiredMethod(playerDataManager, "GetTrialMulti");
     var maybeUpdateTrialMulti = RequiredMethod(playerDataManager, "MaybeUpdateTrialMulti", "System.Double");
     var getAttribute = RequiredMethod(playerDataManager, "GetAttribute", "AttributeIndex");
+    var applyContainerAttributes = RequiredMethod(upgradeContainer, "applyAttributes", "System.Int64", "System.Double[]", "System.Double[]");
     var applyAllAttributes = RequiredMethod(attributeModifier, "ApplyAllAttributes", "System.Int64", "AttributeModifier[]", "System.Double[]", "System.Double[]");
 
-    var helperSetup = EnsureHelperRuntime(module, addCurrency.Parameters[1].ParameterType, applyAllAttributes);
+    var helperSetup = EnsureHelperRuntime(module, addCurrency.Parameters[1].ParameterType, applyAllAttributes, applyContainerAttributes);
     var helperMethods = helperSetup.Methods;
     var patches = 0;
 
@@ -138,6 +143,7 @@ static void PatchAssembly(string assemblyPath)
     patches += PatchArgument(addFuel, 0, helperMethods.ScalePositiveInt64);
     patches += PatchUpgradeGrowth(getCost, helperMethods.ScaleUpgradeCostGrowth);
     patches += PatchReturns(computeVal, helperMethods.ScalePositiveDouble);
+    patches += PatchSecretShopAttributeApplication(recalculateAttributes, helperMethods.ApplySecretShopAttributes);
     patches += PatchZenithAttributeApplication(recalculateAttributes, helperMethods.ApplyZenithAttributes);
     patches += PatchReturns(getTrialMulti, helperMethods.ClampTrialMultiplier);
     patches += PatchArgument(maybeUpdateTrialMulti, 0, helperMethods.ClampTrialMultiplier);
@@ -194,7 +200,7 @@ static FieldDefinition RequiredField(TypeDefinition type, string name)
         ?? throw new InvalidOperationException($"Required field not found: {type.Name}.{name}");
 }
 
-static HelperSetup EnsureHelperRuntime(ModuleDefinition module, TypeReference bigIntegerType, MethodReference applyAllAttributes)
+static HelperSetup EnsureHelperRuntime(ModuleDefinition module, TypeReference bigIntegerType, MethodReference applyAllAttributes, MethodReference applyContainerAttributes)
 {
     var updates = 0;
     var helperType = module.Types.FirstOrDefault(t => t.Name == "JohnnyPowerPatchRuntime");
@@ -209,6 +215,7 @@ static HelperSetup EnsureHelperRuntime(ModuleDefinition module, TypeReference bi
     }
 
     var isZenithApplying = EnsureField(helperType, "IsZenithApplying", module.TypeSystem.Boolean);
+    var isSecretShopApplying = EnsureField(helperType, "IsSecretShopApplying", module.TypeSystem.Boolean);
 
     var scalePositiveBigInteger = EnsureMethod(
         helperType,
@@ -242,8 +249,8 @@ static HelperSetup EnsureHelperRuntime(ModuleDefinition module, TypeReference bi
         "ScalePositiveDouble",
         module.TypeSystem.Double,
         new[] { module.TypeSystem.Double },
-        method => IsScalePositiveDoubleHelperValid(method, isZenithApplying),
-        il => EmitScalePositiveDouble(il, isZenithApplying),
+        method => IsScalePositiveDoubleHelperValid(method, isZenithApplying, isSecretShopApplying),
+        il => EmitScalePositiveDouble(il, isZenithApplying, isSecretShopApplying),
         ref updates);
 
     var scaleUpgradeCostGrowth = EnsureMethod(
@@ -282,8 +289,17 @@ static HelperSetup EnsureHelperRuntime(ModuleDefinition module, TypeReference bi
         il => EmitApplyZenithAttributes(il, isZenithApplying, applyAllAttributes),
         ref updates);
 
+    var applySecretShopAttributes = EnsureMethod(
+        helperType,
+        "ApplySecretShopAttributes",
+        module.TypeSystem.Void,
+        new TypeReference[] { applyContainerAttributes.DeclaringType, module.TypeSystem.Int64, new ArrayType(module.TypeSystem.Double), new ArrayType(module.TypeSystem.Double) },
+        method => CallsField(method, isSecretShopApplying) && CallsMethod(method, applyContainerAttributes.Name, applyContainerAttributes.DeclaringType.Name),
+        il => EmitApplySecretShopAttributes(il, isSecretShopApplying, applyContainerAttributes),
+        ref updates);
+
     return new HelperSetup(
-        new HelperMethods(scalePositiveBigInteger, scalePositiveInt64, scaleUpgradeCost, scalePositiveDouble, scaleUpgradeCostGrowth, clampTrialMultiplier, clampDartBoardAttribute, applyZenithAttributes),
+        new HelperMethods(scalePositiveBigInteger, scalePositiveInt64, scaleUpgradeCost, scalePositiveDouble, scaleUpgradeCostGrowth, clampTrialMultiplier, clampDartBoardAttribute, applyZenithAttributes, applySecretShopAttributes),
         updates);
 }
 
@@ -408,9 +424,11 @@ static void EmitScalePositiveInt64(ILProcessor il)
     il.Emit(OpCodes.Ret);
 }
 
-static void EmitScalePositiveDouble(ILProcessor il, FieldReference isZenithApplying)
+static void EmitScalePositiveDouble(ILProcessor il, FieldReference isZenithApplying, FieldReference isSecretShopApplying)
 {
-    var positive = Instruction.Create(OpCodes.Ldsfld, isZenithApplying);
+    var positive = Instruction.Create(OpCodes.Ldsfld, isSecretShopApplying);
+    var checkZenith = Instruction.Create(OpCodes.Ldsfld, isZenithApplying);
+    var secretScale = Instruction.Create(OpCodes.Ldarg_0);
     var zenithScale = Instruction.Create(OpCodes.Ldarg_0);
     il.Emit(OpCodes.Ldarg_0);
     il.Emit(OpCodes.Ldc_R8, 0.0);
@@ -418,8 +436,14 @@ static void EmitScalePositiveDouble(ILProcessor il, FieldReference isZenithApply
     il.Emit(OpCodes.Ldarg_0);
     il.Emit(OpCodes.Ret);
     il.Append(positive);
+    il.Emit(OpCodes.Brtrue_S, secretScale);
+    il.Append(checkZenith);
     il.Emit(OpCodes.Brtrue_S, zenithScale);
     il.Emit(OpCodes.Ldarg_0);
+    il.Emit(OpCodes.Ret);
+    il.Append(secretScale);
+    il.Emit(OpCodes.Ldc_R8, SecretShopBonusMultiplier);
+    il.Emit(OpCodes.Mul);
     il.Emit(OpCodes.Ret);
     il.Append(zenithScale);
     il.Emit(OpCodes.Ldc_R8, ZenithBonusMultiplier);
@@ -519,6 +543,20 @@ static void EmitApplyZenithAttributes(ILProcessor il, FieldReference isZenithApp
     il.Emit(OpCodes.Call, applyAllAttributes);
     il.Emit(OpCodes.Ldc_I4_0);
     il.Emit(OpCodes.Stsfld, isZenithApplying);
+    il.Emit(OpCodes.Ret);
+}
+
+static void EmitApplySecretShopAttributes(ILProcessor il, FieldReference isSecretShopApplying, MethodReference applyContainerAttributes)
+{
+    il.Emit(OpCodes.Ldc_I4_1);
+    il.Emit(OpCodes.Stsfld, isSecretShopApplying);
+    il.Emit(OpCodes.Ldarg_0);
+    il.Emit(OpCodes.Ldarg_1);
+    il.Emit(OpCodes.Ldarg_2);
+    il.Emit(OpCodes.Ldarg_3);
+    il.Emit(OpCodes.Callvirt, applyContainerAttributes);
+    il.Emit(OpCodes.Ldc_I4_0);
+    il.Emit(OpCodes.Stsfld, isSecretShopApplying);
     il.Emit(OpCodes.Ret);
 }
 
@@ -631,6 +669,38 @@ static int PatchZenithAttributeApplication(MethodDefinition method, MethodRefere
     return patched;
 }
 
+static int PatchSecretShopAttributeApplication(MethodDefinition method, MethodReference helper)
+{
+    if (CallsHelper(method, helper.Name))
+    {
+        return 0;
+    }
+
+    var sawSecretDatabase = false;
+    foreach (var instruction in method.Body.Instructions)
+    {
+        if (instruction.Operand is FieldReference field
+            && field.DeclaringType.Name == "SecretDatabase"
+            && field.Name == "upgradeDatabase")
+        {
+            sawSecretDatabase = true;
+            continue;
+        }
+
+        if (sawSecretDatabase
+            && instruction.Operand is MethodReference called
+            && called.DeclaringType.Name == "UpgradeContainer"
+            && called.Name == "applyAttributes")
+        {
+            instruction.OpCode = OpCodes.Call;
+            instruction.Operand = helper;
+            return 1;
+        }
+    }
+
+    throw new InvalidOperationException($"{method.DeclaringType.Name}.{method.Name} is missing SecretDatabase applyAttributes call");
+}
+
 static bool CallsHelper(MethodDefinition method, string helperName)
 {
     return method.Body.Instructions.Any(i =>
@@ -670,42 +740,17 @@ static bool IsIdentityMethod(MethodDefinition method)
         && meaningful[1].OpCode == OpCodes.Ret;
 }
 
-static bool IsScalePositiveDoubleHelperValid(MethodDefinition method, FieldReference isZenithApplying)
+static bool IsScalePositiveDoubleHelperValid(MethodDefinition method, FieldReference isZenithApplying, FieldReference isSecretShopApplying)
 {
     if (!HasDoubleConstant(method, ZenithBonusMultiplier)
-        || !CallsField(method, isZenithApplying))
+        || !HasDoubleConstant(method, SecretShopBonusMultiplier)
+        || !CallsField(method, isZenithApplying)
+        || !CallsField(method, isSecretShopApplying))
     {
         return false;
     }
 
-    var instructions = method.Body.Instructions;
-    for (var i = 0; i < instructions.Count - 1; i++)
-    {
-        if (instructions[i].OpCode == OpCodes.Ldarg_0
-            && instructions[i + 1].OpCode == OpCodes.Ldsfld
-            && instructions[i + 1].Operand is FieldReference field
-            && field.Name == isZenithApplying.Name
-            && field.DeclaringType.Name == isZenithApplying.DeclaringType.Name)
-        {
-            return false;
-        }
-    }
-
-    for (var i = 0; i < instructions.Count - 3; i++)
-    {
-        if (instructions[i].OpCode == OpCodes.Ldsfld
-            && instructions[i].Operand is FieldReference field
-            && field.Name == isZenithApplying.Name
-            && field.DeclaringType.Name == isZenithApplying.DeclaringType.Name
-            && instructions[i + 1].OpCode == OpCodes.Brtrue_S
-            && instructions[i + 2].OpCode == OpCodes.Ldarg_0
-            && instructions[i + 3].OpCode == OpCodes.Ret)
-        {
-            return true;
-        }
-    }
-
-    return false;
+    return true;
 }
 
 static bool HasIntConstant(MethodDefinition method, int value)
@@ -744,15 +789,23 @@ static void RequireIdentityMethod(MethodDefinition method)
     }
 }
 
-static void RequireScalePositiveDoubleHelper(MethodDefinition method, FieldReference isZenithApplying)
+static void RequireScalePositiveDoubleHelper(MethodDefinition method, FieldReference isZenithApplying, FieldReference isSecretShopApplying)
 {
-    if (!IsScalePositiveDoubleHelperValid(method, isZenithApplying))
+    if (!IsScalePositiveDoubleHelperValid(method, isZenithApplying, isSecretShopApplying))
     {
         throw new InvalidOperationException($"{method.DeclaringType.Name}.{method.Name} has invalid positive-double helper IL");
     }
 }
 
 static void RequireArgumentPatch(MethodDefinition method, string helperName)
+{
+    if (!CallsHelper(method, helperName))
+    {
+        throw new InvalidOperationException($"{method.DeclaringType.Name}.{method.Name} is missing {helperName}");
+    }
+}
+
+static void RequireCallPatch(MethodDefinition method, string helperName)
 {
     if (!CallsHelper(method, helperName))
     {
@@ -782,6 +835,7 @@ readonly record struct HelperMethods(
     MethodReference ScaleUpgradeCostGrowth,
     MethodReference ClampTrialMultiplier,
     MethodReference ClampDartBoardAttribute,
-    MethodReference ApplyZenithAttributes);
+    MethodReference ApplyZenithAttributes,
+    MethodReference ApplySecretShopAttributes);
 
 readonly record struct HelperSetup(HelperMethods Methods, int Updates);

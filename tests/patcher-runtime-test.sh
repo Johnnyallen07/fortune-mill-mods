@@ -58,6 +58,7 @@ var scalePositiveDouble = helper.GetMethod("ScalePositiveDouble", BindingFlags.P
 var clampTrialMultiplier = helper.GetMethod("ClampTrialMultiplier", BindingFlags.Public | BindingFlags.Static)!;
 var clampDartBoardAttribute = helper.GetMethod("ClampDartBoardAttribute", BindingFlags.Public | BindingFlags.Static)!;
 var isZenithApplying = helper.GetField("IsZenithApplying", BindingFlags.NonPublic | BindingFlags.Static)!;
+var isSecretShopApplying = helper.GetField("IsSecretShopApplying", BindingFlags.NonPublic | BindingFlags.Static)!;
 
 var general = (double)scalePositiveDouble.Invoke(null, new object[] { 2.0 })!;
 if (general != 2.0)
@@ -71,6 +72,15 @@ if (zenith != 20.0)
 {
     throw new InvalidOperationException($"expected zenith bonus 20, got {zenith}");
 }
+isZenithApplying.SetValue(null, false);
+
+isSecretShopApplying.SetValue(null, true);
+var secretShop = (double)scalePositiveDouble.Invoke(null, new object[] { 2.0 })!;
+if (secretShop != 10.0)
+{
+    throw new InvalidOperationException($"expected secret shop bonus 10, got {secretShop}");
+}
+isSecretShopApplying.SetValue(null, false);
 
 var trial = (double)clampTrialMultiplier.Invoke(null, new object[] { 16_834_001_183_299_768.0 })!;
 if (trial != 10_000.0)
@@ -79,9 +89,15 @@ if (trial != 10_000.0)
 }
 
 var bullseyeSize = (double)clampDartBoardAttribute.Invoke(null, new object[] { 24.0, 6 })!;
-if (bullseyeSize != 1.0)
+if (Math.Abs(bullseyeSize - 24.0) > 0.0000001)
 {
-    throw new InvalidOperationException($"expected bullseye size cap 1, got {bullseyeSize}");
+    throw new InvalidOperationException($"expected bullseye size below cap unchanged at 24, got {bullseyeSize}");
+}
+
+var cappedBullseyeSize = (double)clampDartBoardAttribute.Invoke(null, new object[] { 418.0, 6 })!;
+if (Math.Abs(cappedBullseyeSize - 165.39594025728948) > 0.0000001)
+{
+    throw new InvalidOperationException($"expected bullseye size cap 165.39594025728948, got {cappedBullseyeSize}");
 }
 
 var bullseyeCount = (double)clampDartBoardAttribute.Invoke(null, new object[] { 418.0, 7 })!;

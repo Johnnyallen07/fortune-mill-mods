@@ -9,8 +9,9 @@ public static class PowerModDefaults
     public const double UpgradeCostMultiplier = 1.0;
     public const double UpgradeCostGrowthBase = 1.25;
     public const double ZenithBonusMultiplier = 10.0;
+    public const double SecretShopBonusMultiplier = 5.0;
     public const double MaxTrialMultiplier = 10_000.0;
-    public const double MaxDartBullseyeSize = 1.0;
+    public const double MaxDartBullseyeSize = 165.39594025728948;
     public const double MaxDartBullseyeCount = 20.0;
 }
 
@@ -62,6 +63,16 @@ public static class PowerModMath
     }
 
     public static double ScaleZenithBonus(double value, double multiplier)
+    {
+        if (value <= 0.0)
+        {
+            return value;
+        }
+
+        return value * multiplier;
+    }
+
+    public static double ScaleSecretShopBonus(double value, double multiplier)
     {
         if (value <= 0.0)
         {
